@@ -20,12 +20,15 @@ func New(path string) (TryLockerSafe, error) {
 	if !filepath.IsAbs(path) {
 		return nil, ErrNeedAbsPath
 	}
-	fd, err := open(path, os.O_CREATE|os.O_RDONLY)
+	file, err := open(path, os.O_CREATE|os.O_RDONLY)
 	if err != nil {
 		return nil, err
 	}
-	file := os.NewFile(uintptr(fd), path)
-	l := &lock{path, fd, file}
+	l := &lock{
+		path: path,
+		fd:   int(file.Fd()),
+		file: file,
+	}
 	return l, nil
 }
 
@@ -57,15 +60,15 @@ func (l *lock) Destroy() error {
 	return l.file.Close()
 }
 
-func open(path string, flag int) (int, error) {
+func open(path string, flag int) (*os.File, error) {
 	if path == "" {
-		return invalidFileDescriptor, fmt.Errorf("cannot open empty filename")
+		return nil, fmt.Errorf("cannot open empty filename")
 	}
 	fd, err := syscall.Open(path, flag, privateFileMode)
 	if err != nil {
-		return invalidFileDescriptor, err
+		return nil, err
 	}
-	return fd, nil
+	return os.NewFile(uintptr(fd), path), nil
 }
 
 // Check the interfaces are satisfied

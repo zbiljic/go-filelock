@@ -13,10 +13,6 @@ const (
 	privateDirMode = 0700
 )
 
-const (
-	invalidFileDescriptor = -1
-)
-
 // Various errors returned by this package
 var (
 	ErrNeedAbsPath = errors.New("absolute file path must be provided")
