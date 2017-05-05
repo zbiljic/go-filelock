@@ -63,7 +63,7 @@ func (l *lock) TryLock() (bool, error) {
 // Lock acquires exclusivity on the lock without blocking
 func (l *lock) Lock() error {
 	if _, err := lockFile(syscall.Handle(l.fd), 0); err != nil {
-		return nil, err
+		return err
 	}
 	return nil
 }
