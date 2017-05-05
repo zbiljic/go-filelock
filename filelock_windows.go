@@ -39,12 +39,15 @@ func New(path string) (TryLockerSafe, error) {
 	if !filepath.IsAbs(path) {
 		return nil, ErrNeedAbsPath
 	}
-	fd, err := open(path, os.O_WRONLY)
+	file, err := open(path, os.O_WRONLY)
 	if err != nil {
 		return nil, err
 	}
-	file := os.NewFile(uintptr(fd), path)
-	l := &lock{path, fd, file}
+	l := &lock{
+		path: path,
+		fd:   int(file.Fd()),
+		file: file,
+	}
 	return l, nil
 }
 
@@ -59,7 +62,7 @@ func (l *lock) TryLock() (bool, error) {
 
 // Lock acquires exclusivity on the lock without blocking
 func (l *lock) Lock() error {
-	if err := lockFile(syscall.Handle(l.fd), 0); err != nil {
+	if _, err := lockFile(syscall.Handle(l.fd), 0); err != nil {
 		return nil, err
 	}
 	return nil
@@ -80,9 +83,9 @@ func (l *lock) Destroy() error {
 	return l.file.Close()
 }
 
-func open(path string, flag int) (int, error) {
+func open(path string, flag int) (*os.File, error) {
 	if path == "" {
-		return invalidFileDescriptor, fmt.Errorf("cannot open empty filename")
+		return nil, fmt.Errorf("cannot open empty filename")
 	}
 	var access uint32
 	switch flag {
@@ -105,9 +108,9 @@ func open(path string, flag int) (int, error) {
 		syscall.FILE_ATTRIBUTE_NORMAL,
 		0)
 	if err != nil {
-		return invalidFileDescriptor, err
+		return nil, err
 	}
-	return fd, nil
+	return os.NewFile(uintptr(fd), path), nil
 }
 
 func lockFile(fd syscall.Handle, flags uint32) (bool, error) {
@@ -116,7 +119,7 @@ func lockFile(fd syscall.Handle, flags uint32) (bool, error) {
 	if fd == syscall.InvalidHandle {
 		return true, nil
 	}
-	err := lockFileEx(fd, flag, 1, 0, &syscall.Overlapped{})
+	err := lockFileEx(fd, flag, 0, 1, 0, &syscall.Overlapped{})
 	if err == nil {
 		return true, nil
 	} else if err.Error() == errLocked.Error() {
