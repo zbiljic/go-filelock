@@ -30,8 +30,16 @@ var (
 		Len:    0,
 	}
 
+	unlck = syscall.Flock_t{
+		Type:   syscall.F_UNLCK,
+		Whence: int16(io.SeekStart),
+		Start:  0,
+		Len:    0,
+	}
+
 	linuxTryLockFile = flockTryLockFile
 	linuxLockFile    = flockLockFile
+	linuxUnlockFile  = flockUnlockFile
 )
 
 func init() {
@@ -40,6 +48,7 @@ func init() {
 	if err := syscall.FcntlFlock(0, F_OFD_GETLK, &getlk); err == nil {
 		linuxTryLockFile = ofdTryLockFile
 		linuxLockFile = ofdLockFile
+		linuxUnlockFile = ofdUnlockFile
 	}
 }
 
@@ -54,7 +63,7 @@ func New(path string) (TryLockerSafe, error) {
 	if !filepath.IsAbs(path) {
 		return nil, ErrNeedAbsPath
 	}
-	file, err := open(path, os.O_CREATE|os.O_RDONLY)
+	file, err := open(path, os.O_CREATE|os.O_RDWR)
 	if err != nil {
 		return nil, err
 	}
@@ -72,17 +81,17 @@ func (l *lock) String() string {
 
 // TryLock acquires exclusivity on the lock without blocking
 func (l *lock) TryLock() (bool, error) {
-	return linuxTryLockFile(path, flag, perm)
+	return linuxTryLockFile(l.fd)
 }
 
 // Lock acquires exclusivity on the lock without blocking
 func (l *lock) Lock() error {
-	return linuxLockFile(path, flag, perm)
+	return linuxLockFile(l.fd)
 }
 
 // Unlock unlocks the lock
 func (l *lock) Unlock() error {
-	return flockUnlock(l.fd)
+	return linuxUnlockFile(l.fd)
 }
 
 // Must implements TryLockerSafe.Must.
@@ -96,7 +105,7 @@ func (l *lock) Destroy() error {
 
 func open(path string, flag int) (*os.File, error) {
 	if path == "" {
-		return invalidFileDescriptor, fmt.Errorf("cannot open empty filename")
+		return nil, fmt.Errorf("cannot open empty filename")
 	}
 	f, err := os.OpenFile(path, flag, privateFileMode)
 	if err != nil {
@@ -107,7 +116,7 @@ func open(path string, flag int) (*os.File, error) {
 
 func ofdTryLockFile(fd int) (bool, error) {
 	flock := wrlck
-	if err := syscall.FcntlFlock(fd, F_OFD_SETLK, &flock); err != nil {
+	if err := syscall.FcntlFlock(uintptr(fd), F_OFD_SETLK, &flock); err != nil {
 		if err == syscall.EWOULDBLOCK {
 			return false, ErrLocked
 		}
@@ -118,7 +127,12 @@ func ofdTryLockFile(fd int) (bool, error) {
 
 func ofdLockFile(fd int) error {
 	flock := wrlck
-	return syscall.FcntlFlock(fd, F_OFD_SETLKW, &flock)
+	return syscall.FcntlFlock(uintptr(fd), F_OFD_SETLKW, &flock)
+}
+
+func ofdUnlockFile(fd int) error {
+	flock := unlck
+	return syscall.FcntlFlock(uintptr(fd), F_OFD_SETLKW, &flock)
 }
 
 // Check the interfaces are satisfied
