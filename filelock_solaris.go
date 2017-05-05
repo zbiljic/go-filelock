@@ -19,11 +19,15 @@ func New(path string) (TryLockerSafe, error) {
 	if !filepath.IsAbs(path) {
 		return nil, ErrNeedAbsPath
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY, privateFileMode)
+	file, err := os.OpenFile(path, os.O_WRONLY, privateFileMode)
 	if err != nil {
 		return nil, err
 	}
-	l := &lock{path, int(f.Fd()), f}
+	l := &lock{
+		path: path,
+		fd:   int(file.Fd()),
+		file: file,
+	}
 	return l, nil
 }
 
